@@ -1,0 +1,204 @@
+<?php
+// Like system AJAX হ্যান্ডেল
+$likeFile = "likes.json";
+if(!file_exists($likeFile)) file_put_contents($likeFile, json_encode([]));
+
+if(isset($_POST['video_like'])){
+    $video = $_POST['video_like'];
+    $likesData = json_decode(file_get_contents($likeFile), true);
+    if(!isset($likesData[$video])) $likesData[$video] = 0;
+    $likesData[$video]++;
+    file_put_contents($likeFile, json_encode($likesData));
+    echo $likesData[$video];
+    exit;
+}
+
+// Comment হ্যান্ডেল
+if(isset($_POST['comment_submit'])){
+    $video = $_POST['video_comment'];
+    $comment = htmlspecialchars($_POST['comment_text']);
+    $commentsFile = "comments.json";
+    if(!file_exists($commentsFile)) file_put_contents($commentsFile, json_encode([]));
+    $commentsData = json_decode(file_get_contents($commentsFile), true);
+    if(!isset($commentsData[$video])) $commentsData[$video] = [];
+    $commentsData[$video][] = $comment;
+    file_put_contents($commentsFile, json_encode($commentsData));
+    header("Location: ".$_SERVER['PHP_SELF']);
+    exit;
+}
+
+// ভিডিও আপলোড হ্যান্ডেল
+if(isset($_FILES['video'])){
+    $uploadDir = "videos/";
+    $thumbDir = "thumbnails/";
+    if(!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+    if(!is_dir($thumbDir)) mkdir($thumbDir, 0755, true);
+
+    $filename = basename($_FILES['video']['name']);
+    $targetFile = $uploadDir . $filename;
+
+    $thumbFile = $thumbDir . basename($_FILES['thumbnail']['name']);
+
+    if(move_uploaded_file($_FILES['video']['tmp_name'], $targetFile) && move_uploaded_file($_FILES['thumbnail']['tmp_name'], $thumbFile)){
+        $date = $_POST['date']; 
+        $time = strtotime($date);
+        if($time) touch($targetFile, $time);
+
+        $title = htmlspecialchars($_POST['title']);
+        $desc = htmlspecialchars($_POST['description']);
+        $metaFile = $uploadDir . pathinfo($filename, PATHINFO_FILENAME) . ".txt";
+        $data = $title . "\n" . $desc . "\n" . basename($_FILES['thumbnail']['name']);
+        file_put_contents($metaFile, $data);
+
+        $uploadMsg = "ভিডিও সফলভাবে আপলোড হয়েছে!";
+    }else{
+        $uploadMsg = "আপলোডে সমস্যা হয়েছে।";
+    }
+}
+?>
+
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flame Television</title>
+<style>
+body { font-family: 'Poppins', sans-serif; margin:0; padding:0; background:#f4f4f4; }
+header { background:#ff4500; color:white; padding:20px 0; text-align:center; }
+nav { display:flex; justify-content:center; background:#333; flex-wrap:wrap; }
+nav a { color:white; padding:14px 20px; text-decoration:none; cursor:pointer; }
+nav a:hover { background:#ff4500; }
+.container { padding:20px; max-width:1200px; margin:auto; }
+.video-card { background:white; margin:15px 0; padding:15px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.15); }
+footer { text-align:center; padding:15px; background:#333; color:white; margin-top:20px; }
+.hidden { display:none; }
+.video-container { text-align:center; margin:20px 0; }
+form input, form label, form textarea { display:block; margin:10px 0; width:100%; max-width:600px; }
+.copy-btn { margin-top:5px; cursor:pointer; background:#ff4500; color:white; border:none; padding:5px 10px; border-radius:3px; }
+.comment-box { margin-top:10px; }
+.like-btn { background:#ff4500; color:white; border:none; padding:5px 8px; border-radius:4px; cursor:pointer; margin-top:5px; }
+.video-card h3 { font-size:24px; color:#ff4500; font-weight:bold; margin:10px 0 5px 0; position:relative; padding-left:30px; }
+.video-card h3::before { content:"🔥"; position:absolute; left:0; top:0; }
+@media(max-width:768px){ .video-card video,img{width:100%;} nav a{flex:1 1 100%; text-align:center;} }
+</style>
+</head>
+<body>
+<header>
+<h1>Flame Television</h1>
+<p>আপনার নতুন বাংলা খবরের উৎস</p>
+</header>
+
+<nav>
+<a onclick="showSection('home')">হোম</a>
+<a onclick="showSection('upload')">ভিডিও আপলোড</a>
+<a onclick="showSection('contact')">যোগাযোগ</a>
+</nav>
+
+<div class="container">
+
+<section id="home">
+<h2>সর্বশেষ ভিডিও</h2>
+<?php
+$dir = "videos/";
+$files = glob($dir . "*.mp4"); 
+$files = array_reverse($files);
+if($files){
+    $likesData = json_decode(file_get_contents("likes.json"), true);
+    $commentsData = json_decode(file_get_contents("comments.json"), true);
+    foreach($files as $file){
+        echo '<div class="video-card">';
+        $metaFile = $dir . pathinfo($file, PATHINFO_FILENAME) . ".txt";
+        $title=$desc=$thumb="";
+        if(file_exists($metaFile)){
+            $lines=file($metaFile,FILE_IGNORE_NEW_LINES);
+            $title=$lines[0]??"";
+            $desc=$lines[1]??"";
+            $thumb=$lines[2]??"";
+        }
+        if($thumb && file_exists("thumbnails/".$thumb)) echo '<img src="thumbnails/'.$thumb.'" width="300"><br>';
+        if($title) echo '<h3>'.$title.'</h3>';
+        if($desc) echo '<p>'.$desc.'</p>';
+        echo '<video width="600" controls><source src="'.$file.'" type="video/mp4">আপনার ব্রাউজার ভিডিও সমর্থন করে না।</video><br>';
+
+        echo '<button class="copy-btn" onclick="copyLink(\''. 'https://'.$_SERVER['HTTP_HOST'].'/videos/'.basename($file).'\')">Copy Link</button>';
+
+        $vid = basename($file);
+        $likeCount = isset($likesData[$vid]) ? $likesData[$vid] : 0;
+        echo '<button class="like-btn" data-video="'.$vid.'">Like (<span class="like-count">'.$likeCount.'</span>)</button>';
+
+        echo '<div class="comment-box"><h4>Comment</h4>';
+        if(isset($commentsData[$vid])) foreach($commentsData[$vid] as $c) echo '<p>'.$c.'</p>';
+        echo '<form method="post">';
+        echo '<input type="hidden" name="video_comment" value="'.$vid.'">';
+        echo '<input type="text" name="comment_text" placeholder="আপনার মন্তব্য লিখুন" required>';
+        echo '<input type="submit" name="comment_submit" value="Submit">';
+        echo '</form></div>';
+
+        $timestamp = filemtime($file);
+        echo '<p>তারিখ: '.date("d-m-Y",$timestamp).'</p>';
+        echo '<p style="text-align:center;">&copy; Flame Television</p>';
+        echo '</div>';
+    }
+}else{
+    echo '<p>কোনো ভিডিও আপলোড করা হয়নি।</p>';
+}
+?>
+</section>
+
+<section id="upload" class="hidden">
+<h2>ভিডিও আপলোড করুন</h2>
+<?php if(isset($uploadMsg)) echo '<p>'.$uploadMsg.'</p>'; ?>
+<form action="" method="post" enctype="multipart/form-data">
+<label>ভিডিও ফাইল নির্বাচন করুন:</label>
+<input type="file" name="video" accept="video/mp4" required>
+<label>Thumbnail (ছবি) নির্বাচন করুন:</label>
+<input type="file" name="thumbnail" accept="image/*" required>
+<label>Title (শিরোনাম):</label>
+<input type="text" name="title" required>
+<label>Description (বর্ণনা):</label>
+<textarea name="description" rows="4" required></textarea>
+<label>আপলোডের তারিখ (যেমন: 2024-05-10):</label>
+<input type="date" name="date" required>
+<input type="submit" value="আপলোড করুন">
+</form>
+</section>
+
+<section id="contact" class="hidden">
+<h2>যোগাযোগ করুন</h2>
+<p>ইমেল: <strong>flamewarriors69@gmail.com</strong></p>
+<p>ফোন: +880 123 456 789</p>
+</section>
+
+</div>
+
+<footer>
+&copy; Flame Television
+</footer>
+
+<script>
+function showSection(sectionId){
+const sections=['home','upload','contact'];
+sections.forEach(id => document.getElementById(id).classList.add('hidden'));
+document.getElementById(sectionId).classList.remove('hidden');
+}
+
+function copyLink(link){
+navigator.clipboard.writeText(link).then(()=>alert("Link copied!"));
+}
+
+document.querySelectorAll('.like-btn').forEach(btn=>{
+    btn.addEventListener('click', function(){
+        const video = this.dataset.video;
+        const countSpan = this.querySelector('.like-count');
+        fetch('', {
+            method:'POST',
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:'video_like='+encodeURIComponent(video)
+        }).then(res=>res.text())
+          .then(data=>{countSpan.textContent=data;});
+    });
+});
+</script>
+</body>
+</html>
